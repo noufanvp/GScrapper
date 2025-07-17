@@ -1,50 +1,179 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GScraper</title>
-</head>
-<body>
-    <form method="POST">
-        {% csrf_token %}
-        {{ form.as_p}}
-        <button type="submit">Fetch Data</button>
-    </form>
-    <div class="result_table">
-        <h1>Result for "{{ keyword }}" with distance from "{{ starting_point }}"</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Rating</th>
-                    <th>Reviews</th>
-                    <th>Category</th>
-                    <th>Phone</th>
-                    <th>Status</th>
-                    <th>Address</th>
-                    <th>Distance (km)</th>
-                    <th>Time</th>
-                    <th>Map Link</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for result in results %}
-                <tr>
-                    <td>{{ result.name }}</td>
-                    <td>{{ result.rating }}</td>
-                    <td>{{ result.review_count }}</td>
-                    <td>{{ result.category }}</td>
-                    <td>{{ result.phone }}</td>
-                    <td>{{ result.status }}</td>
-                    <td>{{ result.address }}</td>
-                    <td>{{ result.distance }}</td>
-                    <td>{{ result.time_req }}</td>
-                    <td><a href="{{ result.location_url }}" target="_blank">View</a></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{% static 'css/scrape_view_style.css' %}">
+    <script src="{% static 'js/scrape_view_script.js' %}"></script>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>GScraper</h1>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <span id="theme-icon">🌙</span>
+          <span id="theme-text">Dark Mode</span>
+        </button>
+      </div>
+
+      <!-- Form Section -->
+      <div class="form-section">
+        <form method="POST" id="searchForm">
+          {% csrf_token %}
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="id_keyword">Search Keyword</label>
+              <input
+                type="text"
+                id="id_keyword"
+                name="keyword"
+                placeholder="e.g., restaurants near calicut"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="id_starting_point">Starting Point</label>
+              <input
+                type="text"
+                id="id_starting_point"
+                name="starting_point"
+                placeholder="e.g., rotech, medical college"
+                required
+              />
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <span>🔍</span> Fetch Data
+            </button>
+          </div>
+        </form>
+      </div>
+
+    <!-- Loading spinner -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Fetching data, please wait...</p>
     </div>
-</body>
+
+      <!-- Results Section -->
+      <div class="results-section">
+        <div class="results-header">
+          <div>
+            <h2 class="results-title">
+              Results for "{{ keyword }}" with distance from "{{ starting_point }}"
+            </h2>
+            <p class="results-meta">
+              {% if results %}
+              Showing {{ results|length }} result{{ results|length|pluralize }}.
+              {% else %} 
+              No results yet.
+              {% endif %}
+            </p>
+          </div>
+          <div class="results-actions">
+            <div class="search-filter">
+              <input
+                type="search"
+                id="filterInput"
+                placeholder="Filter results..."
+              />
+            </div>
+            <button
+              class="btn btn-secondary export-btn"
+              type="button"
+              onclick="exportToCSV()"
+            >
+              <span>📊</span> Export CSV
+            </button>
+          </div>
+        </div>
+
+        {% if results %}
+        <div class="table-container">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th class="sortable" data-column="name">Name</th>
+                <th class="sortable" data-column="rating">Rating</th>
+                <th class="sortable" data-column="reviews">Reviews</th>
+                <th class="sortable" data-column="category">Category</th>
+                <th class="sortable" data-column="phone">Phone</th>
+                <th class="sortable" data-column="status">Status</th>
+                <th
+                  class="sortable"
+                  data-column="distance"
+                  title="Sort by distance"
+                >
+                  Distance
+                </th>
+                <th
+                  class="sortable"
+                  data-column="time"
+                  title="Sort by travel time"
+                >
+                  Time
+                </th>
+                <th>Map</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+            {% for result in results %}
+                <tr
+                data-id="{{ forloop.counter }}"
+                data-address="{{ result.address|escapejs }}"
+                data-status="{{ result.status|escapejs }}"
+                data-url="{{ result.location_url|default_if_none:'#' }}"
+                data-time="{{ result.time_req|default_if_none:'' }}"
+                data-distance="{{ result.distance|default_if_none:0 }}">
+                <td>{{ forloop.counter }}</td>
+                <td><strong>{{ result.name }}</strong></td>
+                <td>
+                  <div class="rating">
+                    <div class="rating-value">{{ result.rating }}</div>
+                    <div class="rating-stars" data-rating="{{ result.rating|default:'0' }}"></div>
+                  </div>
+                </td>
+                <td>{{ result.review_count }}</td>
+                <td>{{ result.category }}</td>
+                <td>{{ result.phone }}</td>
+                <td>
+                  <span
+                    class="status {% if 'open' in result.status|lower and not 'closed' in result.status|lower %}status-open{% elif 'closed' in result.status|lower %}status-closed{% else %}status-unknown{% endif %}"
+                  >
+                    {{ result.status }}
+                  </span>
+                </td>
+                <td>{{ result.distance }} km</td>
+                <td>{{ result.time_req }}</td>
+                <td>
+                  <div class="actions">
+                    <button
+                      class="action-btn"
+                      title="View on map"
+                      onclick="event.stopPropagation();openMaps('{{ result.location_url }}');"
+                    >
+                      🗺️
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="no-results">No data to display. Submit a search above.</div>
+        {% endif %}
+
+    <script>
+     
+    </script>
+  </body>
 </html>
